@@ -1,0 +1,117 @@
+---
+title: "Practical Machine Learning - Write up"
+output: html_document
+---
+
+### Background and Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks.
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, we will use data recorded from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+More information is available from the website http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+This document is the write-up submission for the course Practical Machine Learning by Jeff Leek, PhD, Professor at Johns Hopkins University, Bloomberg School of Public Health. This 4-week course was offered on Coursera in August 2015, and is part of Johns Hopkins Data Science Specialization.
+
+The goal of this project is to predict the manner in which the participants did the exercise. This is the classe variable of the training set, which classifies the correct and incorrect outcomes into A, B, C, D, and E categories. This report describes how the model for the project was built, its cross validation, expected out of sample error calculation, and the choices made. It was used successfully to accurately predict all 20 different test cases on the Coursera website.
+
+### Loading and preprocessing
+#### Loading necessary libraries
+```{r, results="hide"}
+library(randomForest)
+library(caret); library(kernlab); 
+set.seed(1000)
+```
+
+#### Data loading directly from source (training and submission datasets)
+
+```{r, }
+temporaryFile <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile=temporaryFile, method="curl")
+alldata<-read.csv(temporaryFile,na.strings=c("NA","#DIV/0!",""))
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",destfile=temporaryFile, method="curl")
+examdata<-read.csv(temporaryFile,na.strings=c("NA","#DIV/0!",""))
+```
+
+
+#### Training and Testing sets definition
+The training set was randomly exctrated with 60% chunks of each category (A to E), and the remaining 40% assigned to testing.
+```{r}
+inTrain <- createDataPartition(y=alldata$classe,p=0.60, list=FALSE)
+training<-alldata[inTrain,]
+testing<-alldata[-inTrain,]
+``` 
+#### Training and Testng sets cleanup
+The cleanup of the data was processed by removing the columns that ar mostly "NA" (and therefore not significant), and the columns with data that are not associated with the measurements and so are irrelevant for the model (columns 1 to 7)
+```{r}
+train<-training[, colSums(is.na(training)) < nrow(training) * 0.90]
+test<-testing[, colSums(is.na(testing)) < nrow(testing) * 0.90]
+train<-train[,8:60]
+```
+
+### Model definitions
+4 models were defined in an attempt to find the best model.
+```{r, eval=FALSE}
+modelFit1<-train(classe ~ ., data=train, method="rf")
+
+modelFit2<- train(classe ~ ., method = "rpart", data = train)
+
+modelFit3 <- train(classe ~ .,data = train,method="rf",trControl = trainControl(method = "cv", number = 4),prox = TRUE,allowParallel = TRUE)
+
+Control<-trainControl(method="cv", number=5, allowParallel=TRUE)
+rmodelFit4<-train(classe ~ . , data=train, method="rf", trainControl=Control)
+```
+
+```{r, eval=FALSE, echo=FALSE}
+## CODE TO SAVE MODELS TO FILES
+saveRDS(modelFit1, "Models/modelFit1.Rds")
+saveRDS(modelFit2, "Models/modelFit2.Rds")
+saveRDS(modelFit3, "Models/modelFit3.Rds")
+saveRDS(modelFit4, "Models/modelFit4.Rds")
+```
+```{r, echo=FALSE}
+## CODE TO LOAD SAVED MODELS FROM FILES
+modelFit1 = readRDS("Models/modelFit1.Rds")
+modelFit2 = readRDS("Models/modelFit2.Rds")
+modelFit3 = readRDS("Models/modelFit3.Rds")
+modelFit4 = readRDS("Models/modelFit4.Rds")
+```
+### Models results and comparison
+```{r}
+modelFit1$results
+modelFit2$results
+modelFit3$results
+modelFit4$results
+```
+
+As we can see, model 3 presented the most accurate results.
+
+### Cross Validation
+The modelFit3 was then cross-validated with the test dataset.
+```{r}
+confusionMatrix(predict(modelFit3,newdata=test), test$classe)
+print(modelFit3$finalModel)
+```
+
+This confirmed that modelFit3 is the best model to use the 20 case submission set on. 
+  
+  
+The expected out of sample error rate is of 0.82%. This model yielded 100% accurate predictions on the 20 case submission set:
+
+### 20 submission set prediction
+```{r}
+answers<-as.character(predict(modelFit3, examdata))
+answers
+```
+
+### Saving of Submission files
+```{r, results="hide"}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
